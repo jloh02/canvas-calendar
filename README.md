@@ -48,6 +48,12 @@ A simple Google App Script to filter Canvas' calendar using a regex ([Regular Ex
 - You can test it by running the `syncCanvasICSToGoogleCalendar` function in the editor again
 - Or trust that my code works, your regex and setting up is flawless and that your calendar is now synced!
 
+### Canvas links in events
+- Synced events include an **Open in Canvas** link at the top of the description when the feed provides an event URL. The existing description is preserved.
+- Assignment and quiz calendar URLs with a course ID are converted into direct links. Canvas redirects quiz assignments to the quiz page. Other event URLs are kept as provided by Canvas.
+- No Canvas API token or additional permissions are needed. You may need to sign in to Canvas when opening a link.
+- To update an existing installation, paste the updated `Code.js` into your Apps Script `Code.gs`, keeping your `ICS_URL`, `CALENDAR_ID`, and title filters. Save and run `syncCanvasICSToGoogleCalendar`. Existing synced events receive their links on that run; repeated syncs do not accumulate links.
+
 ## Other Utilities
 - You can run the `deleteAllCalendarEvents` function to reset the calendar when the code goes wonky 
     - This shouldn't need to be done frequently

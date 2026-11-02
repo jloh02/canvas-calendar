@@ -57,6 +57,7 @@ function parseCanvasICS() {
     const end = extractField(eventText, "DTEND");
     const location = extractField(eventText, "LOCATION", true);
     const description = extractField(eventText, "X-ALT-DESC", true);
+    const url = getCanvasEventUrl(extractField(eventText, "URL"));
 
     const { startDate, endDate, isAllDay } = parseStartEndTimes(start, end);
 
@@ -77,6 +78,7 @@ function parseCanvasICS() {
       end: endDate,
       location,
       description,
+      url,
       allDay: isAllDay,
     });
   }
@@ -103,16 +105,17 @@ function getExistingEvents(calendar) {
 
 // Add new event to Google Calendar
 function addGoogleCalendarEvent(calendar, event) {
+  const description = buildEventDescription(event);
   let newEvent;
   if (event.allDay)
     newEvent = calendar.createEvent(event.summary, new Date(event.start), new Date(event.end), {
       location: event.location,
-      description: event.description
+      description
     });
   else {
     newEvent = calendar.createAllDayEvent(event.summary, new Date(event.start), {
       location: event.location,
-      description: event.description
+      description
     });
   }
 
@@ -152,8 +155,9 @@ function updateGoogleCalendarEvent(gcalEvent, event) {
     needsUpdate = true;
   }
 
-  if (gcalEvent.getDescription() !== event.description) {
-    gcalEvent.setDescription(event.description);
+  const description = buildEventDescription(event);
+  if (gcalEvent.getDescription() !== description) {
+    gcalEvent.setDescription(description);
     needsUpdate = true;
   }
 
@@ -172,11 +176,43 @@ function removeDeletedEvents(calendar, existingEvents, updatedEventIds) {
   });
 }
 
+// Canvas calendar URLs identify assignments (including quiz assignments) by fragment.
+function getCanvasEventUrl(url) {
+  if (!/^https?:\/\//i.test(url)) return "";
+
+  const calendarUrl = url.match(/^(https?:\/\/[^/?#]+)\/calendar\/?\?([^#]*)#(assignment|quiz)_(\d+)$/i);
+  if (!calendarUrl) return url;
+
+  const context = calendarUrl[2].match(/(?:^|&)include_contexts=([^&]*)/i);
+  if (!context) return url;
+
+  let course;
+  try {
+    course = decodeURIComponent(context[1]).match(/^course_(\d+)$/);
+  } catch (error) {
+    return url;
+  }
+  if (!course) return url;
+
+  const resource = calendarUrl[3].toLowerCase() === "quiz" ? "quizzes" : "assignments";
+  return `${calendarUrl[1]}/courses/${course[1]}/${resource}/${calendarUrl[4]}`;
+}
+
+function buildEventDescription(event) {
+  if (!event.url) return event.description;
+
+  const escapedUrl = event.url.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const link = `<a href="${escapedUrl}">Open in Canvas</a>`;
+  return event.description ? `${link}<br><br>${event.description}` : link;
+}
+
 function extractField(eventText, fieldName, isEscapedText = false) {
-  //After first line with header, take all subsequent lines with a space in front.
-  const regex = new RegExp(`${fieldName}.*?:((.*)(?:\r?\n .*)*)`, 'gim');
-  const match = regex.exec(eventText);
-  let result = match ? match[1].trim().replace(/\r?\n /g, "") : "";
+  // Unfold continuation lines before matching the exact property name.
+  const unfoldedText = eventText.replace(/\r?\n[ \t]/g, "");
+  const regex = new RegExp(`^${fieldName}(?:;[^:\\r\\n]*)?:([^\\r\\n]*)`, 'im');
+  const match = regex.exec(unfoldedText);
+  let result = match ? match[1].trim() : "";
   if (isEscapedText) {
     result = result
       .replace(/\\;/g, ";")
